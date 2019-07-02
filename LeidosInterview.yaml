@@ -1,0 +1,76 @@
+Parameters:
+  KeyName:
+    Description: Name of an existing KeyPair to be used to SSH into the created server
+    Type: AWS::EC2::KeyPair::KeyName
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-1853ac65
+    us-west-1:
+      AMI: ami-bf5540df
+    eu-west-1:
+      AMI: ami-3bfab942
+    ap-southeast-1:
+      AMI: ami-e2adf99e 
+
+Resources:
+  EC2WebServer:
+    Type: AWS::EC2::Instance
+    Metadata:
+       AWS::CloudFormation::Init:
+        config: 
+          packages: 
+            yum:
+              httpd: []
+          files: 
+            /var/www/html/index.html:
+              content: !Sub |
+                <html><h1>Hello World</h1></html>
+          services: 
+            sysvinit:
+              httpd:
+                enabled: true
+                ensureRunning: true
+    Properties:
+      InstanceType: t2.micro
+      SecurityGroupIds: 
+        - !Ref ApacheSecurityGroup
+      ImageId:
+        Fn::FindInMap:
+        - RegionMap
+        - !Ref AWS::Region
+        - AMI
+
+      Tags:
+          - Key: Name
+            Value: ApacheTestServer
+      KeyName: !Ref KeyName
+      UserData:
+        'Fn::Base64': !Sub |
+           #!/bin/bash -xe
+           #Yum Update
+           yum update -y
+           yum install -y aws-cfn-bootstrap
+           #Install Apache from metadate
+           /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2WebServer --region ${AWS::Region}
+  ApacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow tcp port 22 and 80
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+Outputs:
+  URL:
+    Description: The Public DNS for the Apache Server
+    Value: !Sub 'http://${EC2WebServer.PublicDnsName}'
+  Ip:
+    Description: The Public IP for the Apache Server
+    Value: !Sub '${EC2WebServer.PublicIp}'
